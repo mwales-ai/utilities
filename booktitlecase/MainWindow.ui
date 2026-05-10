@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1000</width>
+    <height>620</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Book Title Case</string>
+  </property>
+  <widget class="QWidget" name="theCentral">
+   <layout class="QVBoxLayout" name="theMainLayout">
+    <item>
+     <layout class="QHBoxLayout" name="theTopBar">
+      <item>
+       <widget class="QPushButton" name="theChooseFolderButton">
+        <property name="text">
+         <string>Choose Folder...</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="theSettingsButton">
+        <property name="text">
+         <string>Settings...</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="theTopSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QTableWidget" name="theTable">
+      <property name="alternatingRowColors">
+       <bool>true</bool>
+      </property>
+      <property name="selectionBehavior">
+       <enum>QAbstractItemView::SelectRows</enum>
+      </property>
+      <property name="editTriggers">
+       <set>QAbstractItemView::DoubleClicked|QAbstractItemView::EditKeyPressed</set>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <layout class="QHBoxLayout" name="theBottomBar">
+      <item>
+       <widget class="QPushButton" name="theCheckAllButton">
+        <property name="text">
+         <string>Check All</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="theUncheckAllButton">
+        <property name="text">
+         <string>Uncheck All</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="theInvertButton">
+        <property name="text">
+         <string>Invert Checks</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="theBottomSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="theRenameButton">
+        <property name="text">
+         <string>Rename Checked</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="theStatusBar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
