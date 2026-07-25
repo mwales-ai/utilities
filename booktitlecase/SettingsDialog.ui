@@ -58,6 +58,25 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="theMetadataGroup">
+     <property name="title">
+      <string>Titles</string>
+     </property>
+     <layout class="QVBoxLayout" name="theMetadataLayout">
+      <item>
+       <widget class="QCheckBox" name="theUseEmbeddedCheck">
+        <property name="text">
+         <string>Read title from PDF/EPUB contents (falls back to the filename)</string>
+        </property>
+        <property name="toolTip">
+         <string>When on, the suggested name comes from the title stored inside the document instead of guessing from the filename. Requires unzip (EPUB) and pdfinfo (PDF).</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QDialogButtonBox" name="theButtonBox">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>

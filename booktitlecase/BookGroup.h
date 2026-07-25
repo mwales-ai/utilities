@@ -15,6 +15,10 @@ struct BookGroup
     QString      suggestedName;    // e.g. "Animal Farm" (no extension)
     bool         splitOk;          // true if word splitter succeeded
     bool         checked;          // user wants to rename this group
+
+    QString      embeddedTitle;    // title read from inside the doc ("" if none)
+    QString      metaSource;       // "epub", "pdf", or "" — where it came from
+    bool         fromMetadata;     // suggestedName came from the embedded title
 };
 
 #endif

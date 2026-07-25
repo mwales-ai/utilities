@@ -35,10 +35,13 @@ private slots:
 private:
     void          loadDictionaries();
     void          rescanCurrentFolder();
+    void          populateEmbeddedTitles();
     void          regenerateSuggestions();
     void          rebuildTable();
     void          setRowFromGroup(int row, const BookGroup & g);
     QString       buildSuggestion(const QString & stem) const;
+    QString       titleFromEmbedded(const QString & rawTitle) const;
+    QString       sanitizeForFilename(const QString & name) const;
     void          setStatusInfo(const QString & msg);
     QString       defaultTechDictPath() const;
 
@@ -54,6 +57,7 @@ private:
     QString           theSystemDictPath;
     QString           theTechDictPath;
 
+    bool              theUseEmbedded;   // read titles from PDF/EPUB contents
     bool              theSuppressCellSignal;
 };
 

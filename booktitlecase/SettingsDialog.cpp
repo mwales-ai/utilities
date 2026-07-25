@@ -30,6 +30,11 @@ QString SettingsDialog::techDictPath() const
     return ui->theTechDictEdit->text();
 }
 
+bool SettingsDialog::useEmbedded() const
+{
+    return ui->theUseEmbeddedCheck->isChecked();
+}
+
 void SettingsDialog::setSystemDictPath(const QString & path)
 {
     ui->theSystemDictEdit->setText(path);
@@ -38,6 +43,11 @@ void SettingsDialog::setSystemDictPath(const QString & path)
 void SettingsDialog::setTechDictPath(const QString & path)
 {
     ui->theTechDictEdit->setText(path);
+}
+
+void SettingsDialog::setUseEmbedded(bool on)
+{
+    ui->theUseEmbeddedCheck->setChecked(on);
 }
 
 void SettingsDialog::onBrowseSystem()

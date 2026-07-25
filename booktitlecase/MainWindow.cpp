@@ -4,6 +4,7 @@
 #include "FileScanner.h"
 #include "SettingsDialog.h"
 #include "WordSplitter.h"
+#include "MetadataExtractor.h"
 
 #include <QFile>
 #include <QFileDialog>
@@ -15,6 +16,7 @@
 #include <QTableWidgetItem>
 #include <QHeaderView>
 #include <QCoreApplication>
+#include <QApplication>
 
 #include <iostream>
 
@@ -47,6 +49,7 @@ MainWindow::MainWindow(QWidget *parent)
     theSystemDictPath = s.value("systemDictPath", "/usr/share/dict/words").toString();
     theTechDictPath   = s.value("techDictPath",   defaultTechDictPath()).toString();
     theCurrentFolder  = s.value("lastFolder",     QDir::homePath()).toString();
+    theUseEmbedded    = s.value("useEmbedded",    true).toBool();
 
     connect(ui->theChooseFolderButton, &QPushButton::clicked,
             this,                      &MainWindow::onChooseFolder);
@@ -73,6 +76,7 @@ MainWindow::~MainWindow()
     s.setValue("systemDictPath", theSystemDictPath);
     s.setValue("techDictPath",   theTechDictPath);
     s.setValue("lastFolder",     theCurrentFolder);
+    s.setValue("useEmbedded",    theUseEmbedded);
     delete ui;
 }
 
@@ -128,6 +132,7 @@ void MainWindow::rescanCurrentFolder()
 
     FileScanner scanner;
     theGroups = scanner.scan(theCurrentFolder);
+    populateEmbeddedTitles();
     regenerateSuggestions();
     rebuildTable();
 
@@ -145,11 +150,71 @@ QString MainWindow::buildSuggestion(const QString & stem) const
     return theTitleCaser.titleCase(parts);
 }
 
+// Read the real title from inside each EPUB/PDF once, and cache it on the
+// group. Prefer epub (clean metadata) over pdf when a group has both.
+void MainWindow::populateEmbeddedTitles()
+{
+    for (int i = 0; i < theGroups.size(); ++i)
+    {
+        theGroups[i].embeddedTitle.clear();
+        theGroups[i].metaSource.clear();
+    }
+
+    if (!theUseEmbedded)
+        return;
+
+    MetadataExtractor extractor;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    setStatusInfo(tr("Reading titles from document contents..."));
+
+    for (int i = 0; i < theGroups.size(); ++i)
+    {
+        BookGroup & g = theGroups[i];
+
+        // Look at epub before pdf so the cleaner source wins.
+        QStringList order;
+        order << "epub" << "pdf";
+        for (int k = 0; k < order.size(); ++k)
+        {
+            int idx = g.extensions.indexOf(order.at(k));
+            if (idx < 0)
+                continue;
+
+            QString path = QDir(g.directory).absoluteFilePath(g.originalNames.at(idx));
+            QString title = extractor.extractTitle(path);
+            if (!title.isEmpty())
+            {
+                g.embeddedTitle = title;
+                g.metaSource    = order.at(k);
+                break;
+            }
+        }
+    }
+
+    QApplication::restoreOverrideCursor();
+}
+
 void MainWindow::regenerateSuggestions()
 {
     for (int i = 0; i < theGroups.size(); ++i)
     {
         BookGroup & g = theGroups[i];
+
+        // An embedded title from the document itself beats guessing from the
+        // filename, so prefer it whenever we managed to read one.
+        if (theUseEmbedded && !g.embeddedTitle.isEmpty())
+        {
+            QString name = sanitizeForFilename(titleFromEmbedded(g.embeddedTitle));
+            if (!name.isEmpty())
+            {
+                g.splitOk       = true;
+                g.fromMetadata  = true;
+                g.suggestedName = name;
+                continue;
+            }
+        }
+
+        g.fromMetadata = false;
         QString sug = buildSuggestion(g.originalStem);
         if (sug.isEmpty())
         {
@@ -162,6 +227,52 @@ void MainWindow::regenerateSuggestions()
             g.suggestedName = sug;
         }
     }
+}
+
+// The embedded title is authoritative, so keep its casing as-is UNLESS it is
+// clearly unformatted (all uppercase or all lowercase), in which case run it
+// through the title caser like a filename-derived suggestion.
+QString MainWindow::titleFromEmbedded(const QString & rawTitle) const
+{
+    bool hasUpper = false;
+    bool hasLower = false;
+    for (int i = 0; i < rawTitle.size(); ++i)
+    {
+        if (rawTitle.at(i).isUpper())
+            hasUpper = true;
+        else if (rawTitle.at(i).isLower())
+            hasLower = true;
+    }
+
+    bool wellCased = hasUpper && hasLower;
+    if (wellCased)
+        return rawTitle;
+
+    QStringList words = rawTitle.split(' ', Qt::SkipEmptyParts);
+    if (words.isEmpty())
+        return rawTitle;
+    return theTitleCaser.titleCase(words);
+}
+
+// Strip characters that are illegal in filenames on common filesystems so the
+// title can actually be used as a name.
+QString MainWindow::sanitizeForFilename(const QString & name) const
+{
+    QString out = name;
+    const QString illegal = "/\\:*?\"<>|";
+    for (int i = 0; i < out.size(); ++i)
+    {
+        if (illegal.contains(out.at(i)) || out.at(i) < ' ')
+            out[i] = ' ';
+    }
+
+    out = out.simplified();
+
+    // Windows dislikes trailing dots and spaces on names.
+    while (out.endsWith('.') || out.endsWith(' '))
+        out.chop(1);
+
+    return out;
 }
 
 void MainWindow::rebuildTable()
@@ -196,7 +307,14 @@ void MainWindow::setRowFromGroup(int row, const BookGroup & g)
     sug->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsEditable);
     ui->theTable->setItem(row, COL_SUGGEST, sug);
 
-    QString statusText = g.splitOk ? tr("OK") : tr("no split — edit manually");
+    QString statusText;
+    if (g.fromMetadata)
+        statusText = tr("from %1 metadata").arg(g.metaSource);
+    else if (g.splitOk)
+        statusText = tr("OK");
+    else
+        statusText = tr("no split — edit manually");
+
     QTableWidgetItem *st = new QTableWidgetItem(statusText);
     st->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
     ui->theTable->setItem(row, COL_STATUS, st);
@@ -207,14 +325,17 @@ void MainWindow::onSettings()
     SettingsDialog dlg(this);
     dlg.setSystemDictPath(theSystemDictPath);
     dlg.setTechDictPath(theTechDictPath);
+    dlg.setUseEmbedded(theUseEmbedded);
     if (dlg.exec() != QDialog::Accepted)
         return;
 
     theSystemDictPath = dlg.systemDictPath();
     theTechDictPath   = dlg.techDictPath();
+    theUseEmbedded    = dlg.useEmbedded();
     loadDictionaries();
     if (!theGroups.isEmpty())
     {
+        populateEmbeddedTitles();
         regenerateSuggestions();
         rebuildTable();
     }

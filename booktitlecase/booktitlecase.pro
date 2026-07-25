@@ -12,7 +12,8 @@ SOURCES += \
     Dictionary.cpp \
     WordSplitter.cpp \
     TitleCaser.cpp \
-    FileScanner.cpp
+    FileScanner.cpp \
+    MetadataExtractor.cpp
 
 HEADERS += \
     MainWindow.h \
@@ -21,7 +22,8 @@ HEADERS += \
     WordSplitter.h \
     TitleCaser.h \
     FileScanner.h \
-    BookGroup.h
+    BookGroup.h \
+    MetadataExtractor.h
 
 FORMS   += \
     MainWindow.ui \
