@@ -66,10 +66,20 @@
       <item>
        <widget class="QCheckBox" name="theUseEmbeddedCheck">
         <property name="text">
-         <string>Read title from PDF/EPUB contents (falls back to the filename)</string>
+         <string>Read title from PDF/EPUB metadata (falls back to the filename)</string>
         </property>
         <property name="toolTip">
          <string>When on, the suggested name comes from the title stored inside the document instead of guessing from the filename. Requires unzip (EPUB) and pdfinfo (PDF).</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="theUseContentMatchCheck">
+        <property name="text">
+         <string>For PDFs, recover spacing by matching the filename to the book text</string>
+        </property>
+        <property name="toolTip">
+         <string>Useful when the PDF metadata title is wrong. Searches the PDF's own text (ignoring whitespace) for the filename and uses the spacing found there. Requires pdftotext.</string>
         </property>
        </widget>
       </item>

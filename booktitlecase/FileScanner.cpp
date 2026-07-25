@@ -53,9 +53,11 @@ QList<BookGroup> FileScanner::scan(const QString & dirPath) const
             BookGroup g;
             g.directory     = dir.absolutePath();
             g.originalStem  = stem;
-            g.checked       = true;
-            g.splitOk       = false;
-            g.fromMetadata  = false;
+            g.checked          = true;
+            g.splitOk          = false;
+            g.fromMetadata     = false;
+            g.contentConflict  = false;
+            g.fromContent      = false;
             groups.insert(key, g);
         }
 

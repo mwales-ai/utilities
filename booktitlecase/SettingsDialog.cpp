@@ -35,6 +35,11 @@ bool SettingsDialog::useEmbedded() const
     return ui->theUseEmbeddedCheck->isChecked();
 }
 
+bool SettingsDialog::useContentMatch() const
+{
+    return ui->theUseContentMatchCheck->isChecked();
+}
+
 void SettingsDialog::setSystemDictPath(const QString & path)
 {
     ui->theSystemDictEdit->setText(path);
@@ -48,6 +53,11 @@ void SettingsDialog::setTechDictPath(const QString & path)
 void SettingsDialog::setUseEmbedded(bool on)
 {
     ui->theUseEmbeddedCheck->setChecked(on);
+}
+
+void SettingsDialog::setUseContentMatch(bool on)
+{
+    ui->theUseContentMatchCheck->setChecked(on);
 }
 
 void SettingsDialog::onBrowseSystem()

@@ -19,10 +19,12 @@ public:
     QString  systemDictPath() const;
     QString  techDictPath() const;
     bool     useEmbedded() const;
+    bool     useContentMatch() const;
 
     void     setSystemDictPath(const QString & path);
     void     setTechDictPath(const QString & path);
     void     setUseEmbedded(bool on);
+    void     setUseContentMatch(bool on);
 
 private slots:
     void     onBrowseSystem();

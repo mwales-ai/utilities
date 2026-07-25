@@ -5,12 +5,15 @@
 #include "SettingsDialog.h"
 #include "WordSplitter.h"
 #include "MetadataExtractor.h"
+#include "PdfTitleFinder.h"
 
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QDir>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QPushButton>
 #include <QSettings>
 #include <QStatusBar>
 #include <QTableWidgetItem>
@@ -32,6 +35,7 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , theConflictStrategy(STRAT_UNSET)
     , theSuppressCellSignal(false)
 {
     ui->setupUi(this);
@@ -50,6 +54,7 @@ MainWindow::MainWindow(QWidget *parent)
     theTechDictPath   = s.value("techDictPath",   defaultTechDictPath()).toString();
     theCurrentFolder  = s.value("lastFolder",     QDir::homePath()).toString();
     theUseEmbedded    = s.value("useEmbedded",    true).toBool();
+    theUseContentMatch = s.value("useContentMatch", true).toBool();
 
     connect(ui->theChooseFolderButton, &QPushButton::clicked,
             this,                      &MainWindow::onChooseFolder);
@@ -77,6 +82,7 @@ MainWindow::~MainWindow()
     s.setValue("techDictPath",   theTechDictPath);
     s.setValue("lastFolder",     theCurrentFolder);
     s.setValue("useEmbedded",    theUseEmbedded);
+    s.setValue("useContentMatch", theUseContentMatch);
     delete ui;
 }
 
@@ -133,6 +139,8 @@ void MainWindow::rescanCurrentFolder()
     FileScanner scanner;
     theGroups = scanner.scan(theCurrentFolder);
     populateEmbeddedTitles();
+    populateContentMatches();
+    resolveContentConflicts();
     regenerateSuggestions();
     rebuildTable();
 
@@ -194,14 +202,201 @@ void MainWindow::populateEmbeddedTitles()
     QApplication::restoreOverrideCursor();
 }
 
+// For each PDF, extract its text and find spellings of the title that match
+// the filename. Cached on the group; only groups without cached candidates are
+// scanned, so re-running after a settings change stays cheap.
+void MainWindow::populateContentMatches()
+{
+    if (!theUseContentMatch)
+        return;
+
+    PdfTitleFinder finder;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    setStatusInfo(tr("Scanning PDF text for matching titles..."));
+
+    for (int i = 0; i < theGroups.size(); ++i)
+    {
+        BookGroup & g = theGroups[i];
+        if (!g.contentCandidates.isEmpty())
+            continue;   // already scanned this session
+
+        int idx = g.extensions.indexOf("pdf");
+        if (idx < 0)
+            continue;
+
+        QString path = QDir(g.directory).absoluteFilePath(g.originalNames.at(idx));
+        g.contentCandidates = finder.findCandidates(path, g.originalStem);
+    }
+
+    QApplication::restoreOverrideCursor();
+}
+
+// Turn the ranked candidate lists into a single resolved title per group.
+// A "conflict" is a tie for the most common spelling; the first time one is
+// seen we ask the user how to resolve conflicts for the rest of the session.
+void MainWindow::resolveContentConflicts()
+{
+    for (int i = 0; i < theGroups.size(); ++i)
+    {
+        theGroups[i].contentTitle.clear();
+        theGroups[i].contentConflict = false;
+    }
+
+    if (!theUseContentMatch)
+        return;
+
+    // Flag conflicts and remember the first one to use as a concrete example.
+    int exampleIdx = -1;
+    for (int i = 0; i < theGroups.size(); ++i)
+    {
+        BookGroup & g = theGroups[i];
+        const QList<TitleCandidate> & c = g.contentCandidates;
+        if (c.size() >= 2 && c.at(1).count == c.at(0).count)
+        {
+            g.contentConflict = true;
+            if (exampleIdx < 0)
+                exampleIdx = i;
+        }
+    }
+
+    if (exampleIdx >= 0 && theConflictStrategy == STRAT_UNSET)
+        theConflictStrategy = promptConflictStrategy(theGroups.at(exampleIdx));
+
+    for (int i = 0; i < theGroups.size(); ++i)
+        theGroups[i].contentTitle = resolveCandidates(theGroups[i]);
+}
+
+// Ask, once per session, how to break ties between equally-common spellings.
+int MainWindow::promptConflictStrategy(const BookGroup & example)
+{
+    QStringList spellings;
+    const QList<TitleCandidate> & c = example.contentCandidates;
+    for (int i = 0; i < c.size() && i < 4; ++i)
+        spellings << QString("\"%1\"").arg(c.at(i).text);
+
+    QMessageBox box(this);
+    box.setWindowTitle(tr("Title Spelling Conflict"));
+    box.setIcon(QMessageBox::Question);
+    box.setText(tr("Some PDFs spell the title more than one way, with no clear "
+                   "winner."));
+    box.setInformativeText(tr("For \"%1\" the choices are: %2\n\n"
+                              "How should ties be resolved for the rest of this "
+                              "session?")
+                               .arg(example.originalStem, spellings.join(", ")));
+
+    QPushButton *bTitle = box.addButton(tr("Use Title Case"),   QMessageBox::AcceptRole);
+    QPushButton *bFirst = box.addButton(tr("Keep First Found"), QMessageBox::AcceptRole);
+    QPushButton *bAsk   = box.addButton(tr("Choose Per Book"),  QMessageBox::AcceptRole);
+    box.setDefaultButton(bTitle);
+    box.exec();
+
+    if (box.clickedButton() == bFirst)
+        return STRAT_FIRST;
+    if (box.clickedButton() == bAsk)
+        return STRAT_ASK_EACH;
+    return STRAT_TITLE_CASE;
+}
+
+// Pick a single spelling for one group, applying the session strategy when
+// there is a conflict. The result is sanitized for use as a filename.
+QString MainWindow::resolveCandidates(const BookGroup & g)
+{
+    const QList<TitleCandidate> & c = g.contentCandidates;
+    if (c.isEmpty())
+        return QString();
+
+    QString picked;
+
+    if (!g.contentConflict)
+    {
+        picked = c.at(0).text;                 // clear frequency winner
+    }
+    else
+    {
+        switch (theConflictStrategy)
+        {
+        case STRAT_FIRST:
+        {
+            // Candidates are ranked so the earliest among the tied ones is
+            // already first, but be explicit for clarity.
+            int best = 0;
+            for (int i = 1; i < c.size(); ++i)
+                if (c.at(i).firstPos < c.at(best).firstPos)
+                    best = i;
+            picked = c.at(best).text;
+            break;
+        }
+        case STRAT_ASK_EACH:
+        {
+            QStringList items;
+            for (int i = 0; i < c.size(); ++i)
+                items << c.at(i).text;
+
+            bool ok = false;
+            QString choice = QInputDialog::getItem(
+                this, tr("Choose Title"),
+                tr("Multiple spellings found for \"%1\":").arg(g.originalStem),
+                items, 0, false, &ok);
+            picked = (ok && !choice.isEmpty()) ? choice : c.at(0).text;
+            break;
+        }
+        case STRAT_TITLE_CASE:
+        default:
+            picked = titleCaseString(c.at(0).text);
+            break;
+        }
+    }
+
+    return sanitizeForFilename(picked);
+}
+
+QString MainWindow::titleCaseString(const QString & s) const
+{
+    QStringList words = s.split(' ', Qt::SkipEmptyParts);
+    if (words.isEmpty())
+        return s;
+    return theTitleCaser.titleCase(words);
+}
+
+// Choose the suggested name for every group, in priority order:
+//   1. EPUB metadata      — the most reliable source when present
+//   2. PDF body-text match — recovers spacing even when metadata is wrong
+//   3. PDF metadata        — often wrong, but better than nothing
+//   4. dictionary splitter — last-resort guess from the filename
 void MainWindow::regenerateSuggestions()
 {
     for (int i = 0; i < theGroups.size(); ++i)
     {
         BookGroup & g = theGroups[i];
+        g.fromMetadata = false;
+        g.fromContent  = false;
 
-        // An embedded title from the document itself beats guessing from the
-        // filename, so prefer it whenever we managed to read one.
+        bool haveEpubMeta = theUseEmbedded && !g.embeddedTitle.isEmpty()
+                            && g.metaSource == "epub";
+
+        // 1. EPUB metadata.
+        if (haveEpubMeta)
+        {
+            QString name = sanitizeForFilename(titleFromEmbedded(g.embeddedTitle));
+            if (!name.isEmpty())
+            {
+                g.splitOk       = true;
+                g.fromMetadata  = true;
+                g.suggestedName = name;
+                continue;
+            }
+        }
+
+        // 2. Title recovered from the PDF's own body text.
+        if (theUseContentMatch && !g.contentTitle.isEmpty())
+        {
+            g.splitOk       = true;
+            g.fromContent   = true;
+            g.suggestedName = g.contentTitle;
+            continue;
+        }
+
+        // 3. Any remaining (PDF) metadata title.
         if (theUseEmbedded && !g.embeddedTitle.isEmpty())
         {
             QString name = sanitizeForFilename(titleFromEmbedded(g.embeddedTitle));
@@ -214,7 +409,7 @@ void MainWindow::regenerateSuggestions()
             }
         }
 
-        g.fromMetadata = false;
+        // 4. Dictionary word-splitter.
         QString sug = buildSuggestion(g.originalStem);
         if (sug.isEmpty())
         {
@@ -308,7 +503,10 @@ void MainWindow::setRowFromGroup(int row, const BookGroup & g)
     ui->theTable->setItem(row, COL_SUGGEST, sug);
 
     QString statusText;
-    if (g.fromMetadata)
+    if (g.fromContent)
+        statusText = g.contentConflict ? tr("from PDF text (conflict resolved)")
+                                       : tr("from PDF text");
+    else if (g.fromMetadata)
         statusText = tr("from %1 metadata").arg(g.metaSource);
     else if (g.splitOk)
         statusText = tr("OK");
@@ -326,16 +524,20 @@ void MainWindow::onSettings()
     dlg.setSystemDictPath(theSystemDictPath);
     dlg.setTechDictPath(theTechDictPath);
     dlg.setUseEmbedded(theUseEmbedded);
+    dlg.setUseContentMatch(theUseContentMatch);
     if (dlg.exec() != QDialog::Accepted)
         return;
 
-    theSystemDictPath = dlg.systemDictPath();
-    theTechDictPath   = dlg.techDictPath();
-    theUseEmbedded    = dlg.useEmbedded();
+    theSystemDictPath  = dlg.systemDictPath();
+    theTechDictPath    = dlg.techDictPath();
+    theUseEmbedded     = dlg.useEmbedded();
+    theUseContentMatch = dlg.useContentMatch();
     loadDictionaries();
     if (!theGroups.isEmpty())
     {
         populateEmbeddedTitles();
+        populateContentMatches();
+        resolveContentConflicts();
         regenerateSuggestions();
         rebuildTable();
     }

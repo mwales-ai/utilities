@@ -13,7 +13,8 @@ SOURCES += \
     WordSplitter.cpp \
     TitleCaser.cpp \
     FileScanner.cpp \
-    MetadataExtractor.cpp
+    MetadataExtractor.cpp \
+    PdfTitleFinder.cpp
 
 HEADERS += \
     MainWindow.h \
@@ -23,7 +24,8 @@ HEADERS += \
     TitleCaser.h \
     FileScanner.h \
     BookGroup.h \
-    MetadataExtractor.h
+    MetadataExtractor.h \
+    PdfTitleFinder.h
 
 FORMS   += \
     MainWindow.ui \
