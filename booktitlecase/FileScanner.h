@@ -8,7 +8,9 @@
 #include <QList>
 
 /** Scan a directory for book files and group them by stem (case-insensitive).
- *  Recognized extensions: pdf, epub, mobi. */
+ *  A group is started by a recognized book extension (pdf, epub, mobi); any
+ *  other file with the same base name — a zip of source code, errata, a cover —
+ *  is added to that group so it gets renamed along with the book. */
 class FileScanner
 {
 public:
